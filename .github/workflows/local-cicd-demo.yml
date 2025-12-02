@@ -1,0 +1,51 @@
+name: Local CD - Compare AppSettings
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  cd-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build server-demo
+        run: dotnet build src/server-demo/server-demo.csproj -c Release
+
+      - name: Build compare tool
+        run: dotnet build src/CompareAppSettings/CompareAppSettings.csproj -c Release
+
+      - name: Start server in background
+        run: |
+          dotnet run --project src/server-demo --urls "http://localhost:5000" &
+          SERVER_PID=$!
+          echo "server_pid=$SERVER_PID" >> $GITHUB_ENV
+          sleep 3
+
+      - name: Run appsettings compare (this is the CD gate)
+        id: compare
+        run: |
+          dotnet run --project src/CompareAppSettings/CompareAppSettings.csproj -- \
+            --local src/CompareAppSettings/appsettings.json \
+            --remote-url http://localhost:5000/appsettings
+        continue-on-error: true
+
+      - name: Stop server
+        if: env.server_pid != ''
+        run: |
+          kill ${{ env.server_pid }} || true
+          sleep 1
+
+      - name: Fail job if compare failed
+        if: steps.compare.outcome != 'success'
+        run: |
+          echo "ERROR: AppSettings differ between local and server. Failing CD."
+          # print the compare step logs again (Actions UI also shows it)
+          exit 1
