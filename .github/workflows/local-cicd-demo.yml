@@ -47,5 +47,4 @@ jobs:
         if: steps.compare.outcome != 'success'
         run: |
           echo "ERROR: AppSettings differ between local and server. Failing CD."
-          # print the compare step logs again (Actions UI also shows it)
           exit 1
